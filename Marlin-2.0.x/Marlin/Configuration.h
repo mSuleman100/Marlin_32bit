@@ -81,13 +81,15 @@
   #define SCARA_SEGMENTS_PER_SECOND 100
 
   // Length of inner and outer support arms. Measure arm lengths precisely.
-  #define SCARA_LINKAGE_1  228    // (mm)
-  #define SCARA_LINKAGE_2 136.5    // (mm)
+  // MakerArm: both arms are 200 mm (equal-length arms). Matches the MKS build.
+  #define SCARA_LINKAGE_1  200    // (mm)
+  #define SCARA_LINKAGE_2  200    // (mm)
 
   // SCARA tower offset (position of Tower relative to bed zero position)
   // This needs to be reasonably accurate as it defines the printbed position in the SCARA space.
-  #define SCARA_OFFSET_X    200       // (mm)
-  #define SCARA_OFFSET_Y    -120       // (mm)
+  // MakerArm: X0/Y0 is at the center of the tower, so both offsets are 0.
+  #define SCARA_OFFSET_X      0       // (mm)
+  #define SCARA_OFFSET_Y      0       // (mm)
 
   #if ENABLED(MORGAN_SCARA)
 
@@ -102,8 +104,14 @@
 
   #elif ENABLED(MP_SCARA)
 
+    // Convert XY feedrate from mm/s to degrees/s on the fly (the MKS build had this on).
+    // Without it, G-code feedrates are wrongly treated as deg/s and motion is far too slow/fast.
+    #define SCARA_FEEDRATE_SCALING
+
+    // MP_SCARA home is expressed as the A/B joint ANGLES in MANUAL_X/Y_HOME_POS,
+    // so these THETA offsets stay at 0 for the MakerArm.
     #define SCARA_OFFSET_THETA1  0 // degrees
-    #define SCARA_OFFSET_THETA2 0 // degrees
+    #define SCARA_OFFSET_THETA2  0 // degrees
 
   #endif
 
@@ -793,9 +801,9 @@
 // Specify here all the endstop connectors that are connected to any endstop or probe.
 // Almost all printers will be using one per axis. Probes will use one or more of the
 // extra connectors. Leave undefined any used for non-endstop and non-probe purposes.
-//#define USE_XMIN_PLUG  // Disabled for motor testing (no switches wired yet)
-//#define USE_YMIN_PLUG
-//#define USE_ZMIN_PLUG
+#define USE_XMIN_PLUG   // A axis (shoulder) homing switch
+#define USE_YMIN_PLUG   // B axis (elbow) homing switch
+#define USE_ZMIN_PLUG   // Z leadscrew homing switch
 //#define USE_IMIN_PLUG
 //#define USE_JMIN_PLUG
 //#define USE_KMIN_PLUG
@@ -877,9 +885,9 @@
  *          TMC5130, TMC5130_STANDALONE, TMC5160, TMC5160_STANDALONE
  * :['A4988', 'A5984', 'DRV8825', 'LV8729', 'L6470', 'L6474', 'POWERSTEP01', 'TB6560', 'TB6600', 'TMC2100', 'TMC2130', 'TMC2130_STANDALONE', 'TMC2160', 'TMC2160_STANDALONE', 'TMC2208', 'TMC2208_STANDALONE', 'TMC2209', 'TMC2209_STANDALONE', 'TMC26X', 'TMC26X_STANDALONE', 'TMC2660', 'TMC2660_STANDALONE', 'TMC5130', 'TMC5130_STANDALONE', 'TMC5160', 'TMC5160_STANDALONE']
  */
-#define X_DRIVER_TYPE  A4988
-#define Y_DRIVER_TYPE  A4988
-#define Z_DRIVER_TYPE  A4988
+#define X_DRIVER_TYPE  TMC2208_STANDALONE
+#define Y_DRIVER_TYPE  TMC2208_STANDALONE
+#define Z_DRIVER_TYPE  TMC2208_STANDALONE
 //#define X2_DRIVER_TYPE A4988
 //#define Y2_DRIVER_TYPE A4988
 //#define Z2_DRIVER_TYPE A4988
@@ -888,7 +896,7 @@
 //#define I_DRIVER_TYPE  A4988
 //#define J_DRIVER_TYPE  A4988
 //#define K_DRIVER_TYPE  A4988
-#define E0_DRIVER_TYPE A4988
+#define E0_DRIVER_TYPE TMC2208_STANDALONE
 //#define E1_DRIVER_TYPE A4988
 //#define E2_DRIVER_TYPE A4988
 //#define E3_DRIVER_TYPE A4988
@@ -950,7 +958,7 @@
  * Override with M203
  *                                      X, Y, Z [, I [, J [, K]]], E0 [, E1[, E2...]]
  */
-#define DEFAULT_MAX_FEEDRATE          { 1000, 1000, 50, 25 }
+#define DEFAULT_MAX_FEEDRATE          { 14.327, 28.653, 15, 25 }   // A,B deg/s ; Z,E mm/s (from MKS build)
 
 //#define LIMITED_MAX_FR_EDITING        // Limit edit via M203 or LCD to DEFAULT_MAX_FEEDRATE * 2
 #if ENABLED(LIMITED_MAX_FR_EDITING)
@@ -963,7 +971,7 @@
  * Override with M201
  *                                      X, Y, Z [, I [, J [, K]]], E0 [, E1[, E2...]]
  */
-#define DEFAULT_MAX_ACCELERATION      { 1000, 1000, 10, 20000 }
+#define DEFAULT_MAX_ACCELERATION      { 172, 344, 100, 10000 }   // A, B, Z, E (from MKS build)
 
 //#define LIMITED_MAX_ACCEL_EDITING     // Limit edit via M201 or LCD to DEFAULT_MAX_ACCELERATION * 2
 #if ENABLED(LIMITED_MAX_ACCEL_EDITING)
@@ -992,9 +1000,9 @@
  */
 #define CLASSIC_JERK
 #if ENABLED(CLASSIC_JERK)
-  #define DEFAULT_XJERK  5.0
-  #define DEFAULT_YJERK  5.0
-  #define DEFAULT_ZJERK  0.3
+  #define DEFAULT_XJERK  1.433
+  #define DEFAULT_YJERK  2.865
+  #define DEFAULT_ZJERK  0.4
   //#define DEFAULT_IJERK  0.3
   //#define DEFAULT_JJERK  0.3
   //#define DEFAULT_KJERK  0.3
@@ -1336,9 +1344,12 @@
 // @section machine
 
 // Invert the stepper direction. Change (or reverse the motor connector) if an axis goes the wrong way.
-#define INVERT_X_DIR false
-#define INVERT_Y_DIR false
-#define INVERT_Z_DIR false
+// Directions from the working MKS build. Motor wiring on the SKR Pro may differ,
+// so VERIFY each axis with a small jog BEFORE homing (a reversed axis will drive
+// into the endstop/tower). Flip the matching line if an axis moves the wrong way.
+#define INVERT_X_DIR false   // A axis (shoulder)
+#define INVERT_Y_DIR true    // B axis (elbow)
+#define INVERT_Z_DIR true    // Z leadscrew
 //#define INVERT_I_DIR false
 //#define INVERT_J_DIR false
 //#define INVERT_K_DIR false
@@ -1384,16 +1395,17 @@
 // @section machine
 
 // The size of the printable area
-#define X_BED_SIZE 600
-#define Y_BED_SIZE 450
+#define X_BED_SIZE 800
+#define Y_BED_SIZE 400
 
 // Travel limits (mm) after homing, corresponding to endstop positions.
-#define X_MIN_POS 0
+// MakerArm SCARA reachable envelope = full arm reach (L1 + L2) in each direction.
+#define X_MIN_POS -(SCARA_LINKAGE_1 + SCARA_LINKAGE_2)
 #define Y_MIN_POS 0
 #define Z_MIN_POS 0
-#define X_MAX_POS X_BED_SIZE
-#define Y_MAX_POS X_BED_SIZE
-#define Z_MAX_POS 100
+#define X_MAX_POS (SCARA_LINKAGE_1 + SCARA_LINKAGE_2)
+#define Y_MAX_POS (SCARA_LINKAGE_1 + SCARA_LINKAGE_2)
+#define Z_MAX_POS 159
 //#define I_MIN_POS 0
 //#define I_MAX_POS 50
 //#define J_MIN_POS 0
@@ -1738,8 +1750,10 @@
 
 // Manually set the home position. Leave these undefined for automatic settings.
 // For DELTA this is the top-center of the Cartesian print volume.
-#define MANUAL_X_HOME_POS 212.72
-#define MANUAL_Y_HOME_POS -484.28
+// MP_SCARA: the home position is expressed as the A/B JOINT ANGLES (degrees) at
+// the endstops, not Cartesian coordinates. These are the MKS build's home angles.
+#define MANUAL_X_HOME_POS 269.175   // A (shoulder) home angle  (= 179.175 + 90)
+#define MANUAL_Y_HOME_POS 142.05    // B (elbow) home angle
 //#define MANUAL_Z_HOME_POS 0
 
 // Use "Z Safe Homing" to avoid homing with a Z probe outside the bed area.
@@ -1759,7 +1773,7 @@
 #endif
 
 // Homing speeds (mm/min)
-#define HOMING_FEEDRATE_MM_M { (80*60), (80*60), (4*60) }
+#define HOMING_FEEDRATE_MM_M { (20*60), (20*60), (8.3*60) }   // from MKS build
 
 // Validate that endstops are triggered on homing moves
 //#define VALIDATE_HOMING_ENDSTOPS

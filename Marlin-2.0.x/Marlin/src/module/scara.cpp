@@ -77,17 +77,14 @@ float segments_per_second = TERN(AXEL_TPARA, TPARA_SEGMENTS_PER_SECOND, SCARA_SE
   void scara_set_axis_is_at_home(const AxisEnum axis) {
     if (axis == Z_AXIS)
       current_position.z = Z_HOME_POS;
-    else {
-      // MORGAN_SCARA uses a Cartesian XY home position
-      xyz_pos_t homeposition = { X_HOME_POS, Y_HOME_POS, Z_HOME_POS };
-      //DEBUG_ECHOLNPAIR_P(PSTR("homeposition X"), homeposition.x, SP_Y_LBL, homeposition.y);
-
-      delta = homeposition;
-      forward_kinematics(delta.a, delta.b);
-      current_position[axis] = cartes[axis];
-
-      //DEBUG_ECHOLNPAIR_P(PSTR("Cartesian X"), current_position.x, SP_Y_LBL, current_position.y);
-      update_software_endstops(axis);
+    else if (axis == X_AXIS || axis == Y_AXIS) {
+      // MANUAL_X/Y_HOME_POS are joint angles (degrees); convert to Cartesian mm
+      // before sync_plan_position() runs inverse kinematics on current_position.
+      forward_kinematics(X_HOME_POS, Y_HOME_POS);
+      current_position.x = cartes.x;
+      current_position.y = cartes.y;
+      update_software_endstops(X_AXIS);
+      update_software_endstops(Y_AXIS);
     }
   }
 
@@ -127,7 +124,15 @@ float segments_per_second = TERN(AXEL_TPARA, TPARA_SEGMENTS_PER_SECOND, SCARA_SE
     // Angle of Arm2
     PSI = ATAN2(S2, C2);
 
-    delta.set(DEGREES(THETA), DEGREES(SUM_TERN(MORGAN_SCARA, PSI, THETA)), raw.z);
+    // Match the MakerArm firmware's A-angle representation: keep A within
+    // (-90, 270] degrees so that moves near the home pose (A ~ 269 deg) do not
+    // wrap the long way around. Without this, ATAN2 returns e.g. -91 deg for a
+    // pose the MakerArm reports as 269 deg, and the planner commands a ~360 deg turn.
+    float a_deg = DEGREES(THETA);
+    if (a_deg < 0)   a_deg += 360.0f;
+    if (a_deg > 270) a_deg -= 360.0f;
+
+    delta.set(a_deg, DEGREES(PSI), raw.z);
 
     /*
       DEBUG_POS("SCARA IK", raw);
