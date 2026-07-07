@@ -885,9 +885,9 @@
  *          TMC5130, TMC5130_STANDALONE, TMC5160, TMC5160_STANDALONE
  * :['A4988', 'A5984', 'DRV8825', 'LV8729', 'L6470', 'L6474', 'POWERSTEP01', 'TB6560', 'TB6600', 'TMC2100', 'TMC2130', 'TMC2130_STANDALONE', 'TMC2160', 'TMC2160_STANDALONE', 'TMC2208', 'TMC2208_STANDALONE', 'TMC2209', 'TMC2209_STANDALONE', 'TMC26X', 'TMC26X_STANDALONE', 'TMC2660', 'TMC2660_STANDALONE', 'TMC5130', 'TMC5130_STANDALONE', 'TMC5160', 'TMC5160_STANDALONE']
  */
-#define X_DRIVER_TYPE  TMC2208_STANDALONE
-#define Y_DRIVER_TYPE  TMC2208_STANDALONE
-#define Z_DRIVER_TYPE  TMC2208_STANDALONE
+#define X_DRIVER_TYPE  TMC2209_STANDALONE
+#define Y_DRIVER_TYPE  TMC2209_STANDALONE
+#define Z_DRIVER_TYPE  TMC2209_STANDALONE
 //#define X2_DRIVER_TYPE A4988
 //#define Y2_DRIVER_TYPE A4988
 //#define Z2_DRIVER_TYPE A4988
@@ -896,7 +896,7 @@
 //#define I_DRIVER_TYPE  A4988
 //#define J_DRIVER_TYPE  A4988
 //#define K_DRIVER_TYPE  A4988
-#define E0_DRIVER_TYPE TMC2208_STANDALONE
+#define E0_DRIVER_TYPE TMC2209_STANDALONE
 //#define E1_DRIVER_TYPE A4988
 //#define E2_DRIVER_TYPE A4988
 //#define E3_DRIVER_TYPE A4988
@@ -947,11 +947,52 @@
 //#define DISTINCT_E_FACTORS
 
 /**
- * Default Axis Steps Per Unit (steps/mm)
+ * MakerArm motor step calculation — Motor A (shoulder/L1) and Motor B (elbow/L2).
+ * Both joints use 50:1 harmonic drives (same as the working MakerArm build).
+ *
+ * Formula: steps/degree = (full_steps × microstepping × ratio) / 360
+ *
+ * IMPORTANT: A_MICROSTEPPING / B_MICROSTEPPING must match your driver MS pins.
+ *   MakerArm used DRV8825 at 8x (jumpers 011).
+ *   TMC2209 on SKR Pro: MS1=VIO, MS2=GND → 8x. MS1=GND, MS2=GND → 16x.
+ *   If your drivers are at 16x, set A/B_MICROSTEPPING to 16 (steps ≈ 444.44).
+ */
+#define A_NEMA_FULLSTEPS    200   // Motor A — shoulder / L1 (Marlin X axis)
+#define B_NEMA_FULLSTEPS    200   // Motor B — elbow / L2    (Marlin Y axis)
+#define Z_NEMA_FULLSTEPS    200   // Z leadscrew
+#define E_NEMA_FULLSTEPS    200   // Extruder (if used)
+
+#define A_MICROSTEPPING      16   // Must match driver MS jumpers. SKR TMC2208 @ 16x (MKS build also 16x)
+#define B_MICROSTEPPING      16
+#define Z_MICROSTEPPING      16
+#define E_MICROSTEPPING      16   // Assumes E driver also at 16x (E is unused for the laser)
+
+#define A_HDRIVE_RATIO       50   // 50:1 harmonic drive (shoulder)
+#define B_HDRIVE_RATIO       50   // 50:1 harmonic drive (elbow)
+
+#define Z_ROD_PITCH           4   // 4 mm pitch leadscrew
+
+#define E_GEARBOX_RATIO       3   // Titan-style 3:1 gearbox (MakerArm)
+#define E_GEAR_DIAMETER    6.44   // Calibrated extruder gear diameter (mm)
+
+// A/B: 200 × 8 × 50 / 360 = 222.222… steps/deg
+#define A_STEPS_PER_DEGREE  (1.0 * A_NEMA_FULLSTEPS * A_MICROSTEPPING * A_HDRIVE_RATIO / 360.0)
+#define B_STEPS_PER_DEGREE  (1.0 * B_NEMA_FULLSTEPS * B_MICROSTEPPING * B_HDRIVE_RATIO / 360.0)
+
+// Z: 200 × 8 / 4 = 400 steps/mm
+#define Z_STEPS_PER_MM      (1.0 * Z_NEMA_FULLSTEPS * Z_MICROSTEPPING / Z_ROD_PITCH)
+
+// E: 200 × 8 × 3 / (6.44 × π) ≈ 237.27 steps/mm
+#define E_STEPS_PER_MM      (1.0 * E_NEMA_FULLSTEPS * E_MICROSTEPPING * E_GEARBOX_RATIO / (E_GEAR_DIAMETER * M_PI))
+
+/**
+ * Default Axis Steps Per Unit
  * Override with M92
+ *
+ * SCARA: X and Y are steps per DEGREE. Z and E are steps per MM.
  *                                      X, Y, Z [, I [, J [, K]]], E0 [, E1[, E2...]]
  */
-#define DEFAULT_AXIS_STEPS_PER_UNIT   { 177.7777777, 142.2222222, 400, 93 }
+#define DEFAULT_AXIS_STEPS_PER_UNIT   { A_STEPS_PER_DEGREE, B_STEPS_PER_DEGREE, Z_STEPS_PER_MM, E_STEPS_PER_MM }
 
 /**
  * Default Max Feed Rate (mm/s)
@@ -986,9 +1027,9 @@
  *   M204 R    Retract Acceleration
  *   M204 T    Travel Acceleration
  */
-#define DEFAULT_ACCELERATION          1000    // X, Y, Z and E acceleration for printing moves
-#define DEFAULT_RETRACT_ACCELERATION  1000    // E acceleration for retracts
-#define DEFAULT_TRAVEL_ACCELERATION   1000    // X, Y, Z acceleration for travel (non printing) moves
+#define DEFAULT_ACCELERATION            20    // A, B, Z, E acceleration for printing moves (from MKS build)
+#define DEFAULT_RETRACT_ACCELERATION  3000    // E acceleration for retracts             (from MKS build)
+#define DEFAULT_TRAVEL_ACCELERATION    150    // A, B, Z acceleration for travel moves    (from MKS build)
 
 /**
  * Default Jerk limits (mm/s)
@@ -1015,7 +1056,7 @@
   #endif
 #endif
 
-#define DEFAULT_EJERK    3.0  // May be used by Linear Advance
+#define DEFAULT_EJERK    5.0  // From MKS build (E only; unused for the laser)
 
 /**
  * Junction Deviation Factor
